@@ -1,0 +1,139 @@
+Practical Machine Learning : Write Up
+===========================================
+**Author: Sanya B**
+
+###Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+###Data Sources
+
+Training data for this project:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Test data: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+###Preprocessing
+
+```{r packages}
+library(caret)
+library(e1071)
+library(rpart)
+library(randomForest)
+```
+
+###LOading the data
+```{r data}
+train=read.csv("pml-training.csv")
+test=read.csv("pml-testing.csv")
+```
+
+###Cross-validation
+Cross-validation is performed by subsampling the training data set randomly without replacement into 2 subsamples: mytrain data (70% of the original Training data set) and mytest data (30%).The models are fit on the mytrain data set, and tested on the mytest data. Once the most accurate model is choosen, it is tested on the original Testing data set.
+
+```{r cv}
+ind=createDataPartition(y=train$classe,p=0.7,list=FALSE)
+mytrain=train[ind,]
+mytest=train[-ind,]
+```
+
+###Variable Selection
+Removing variables with NearZeroVariance
+
+```{r vs}
+myDataNZV <- nearZeroVar(mytrain, saveMetrics=TRUE)
+
+
+x=c()
+for(i in 1:nrow(myDataNZV))
+{
+  if(!myDataNZV[i,4])
+  {
+    x=c(x,i)
+  }
+}
+```
+
+Same variable reduction steps applied on the training and testing sets
+```{r preprocess}
+mytrain=mytrain[,x]
+mytest=mytest[,x]
+test=test[,x]
+```
+
+###Removing NA columns
+here we remove all columns which have more than 60% NA values
+```{r preprocess2}
+
+newtrain <- mytrain
+newtest<-mytest
+finaltest<-test
+for(i in 1:length(mytrain)) { #for every column in the training dataset
+  if( sum( is.na( mytrain[, i] ) ) /nrow(mytrain) >= .6 ) { #if n?? NAs > 60% of total observations
+    for(j in 1:length(newtrain)) {
+      if( length( grep(names(mytrain[i]), names(newtrain)[j]) ) ==1)  { #if the columns are the same:
+        newtrain <- newtrain[ , -j] #Remove that column
+        newtest<-newtest[,-j]
+        finaltest<-finaltest[,-j]
+      }
+    } 
+  }
+}
+```
+
+Removing the first column since it is irrelevant
+```{r preprocesss3}
+
+newtrain<-newtrain[,-1]
+newtest=mytest[,-1]
+finaltest=finaltest[,-1]
+```
+
+###MOdel Selection
+##Rpart
+``` {r rpart}
+modelrpart <- rpart(classe ~ ., data=newtrain, method="class")
+predrpart <- predict(modelrpart, newtest, type = "class")
+confusionMatrix(predrpart, newtest$classe)
+```
+
+##Random Forest
+``` {r rf}
+modelrf <- randomForest(classe ~.,data=newtrain)
+predrf <- predict(modelrf, newtest, type = "class")
+confusionMatrix(predrf, newtest$classe)
+```
+
+##Naive Bayesian
+``` {r nb}
+modelnb=naiveBayes(classe ~ ., data=newtrain, method="class")
+prednb=predict(modelnb, newtest, type = "class")
+confusionMatrix(prednb, newtest$classe)
+```
+
+###Expected out-of-sample error
+The expected out-of-sample error will correspond to the quantity: 1-accuracy in the cross-validation data. Accuracy is the proportion of correct classified observation over the total sample in the subTesting data set. Expected accuracy is the expected accuracy in the out-of-sample data set (i.e. original testing data set). Thus, the expected value of the out-of-sample error will correspond to the expected number of missclassified observations/total observations in the Test data set, which is the quantity: 1-accuracy found from the cross-validation data set.
+
+##Prediction
+As we from above, random Forests yielded better prediction than rpart or Naive bayesian approach. Accuracy for Random Forest model is 0.9983 (95% CI : (0.9969, 0.9992)) as opposed to 87% from rpart and 66% from Naive Bayesian.
+
+Removing problem_id
+``` {r prediction}
+finaltest=finaltest[,-58]
+```
+
+
+```{r pred2}
+for(i in 1:(ncol(newtrain)-1)){
+  if(class(newtrain[,i])=="factor"){
+levels(finaltest[,i]) <- levels(newtrain[,i])
+}
+}
+pred<-predict(modelrf,finaltest,type="class")
+pred
+```
